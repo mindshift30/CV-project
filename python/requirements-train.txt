@@ -1,0 +1,8 @@
+tensorflow>=2.12.0
+efficientnet
+pandas
+numpy
+Pillow
+matplotlib
+scikit-learn
+tensorflowjs
