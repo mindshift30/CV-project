@@ -3,7 +3,10 @@
    js/db.js
    ============================================================ */
 
-const API_BASE = 'php/api.php';
+// Auto-detect: Vercel production uses /api/, localhost uses php/api.php
+const API_BASE = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+  ? 'php/api.php'
+  : '/api/';
 
 async function apiRequest(params = {}, body = null, method = 'GET') {
   const url = new URL(API_BASE, window.location.href);
