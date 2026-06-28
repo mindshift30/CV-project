@@ -128,12 +128,12 @@
     const modal = document.getElementById('report-modal');
     const body  = document.getElementById('report-modal-body');
     if (!modal || !body) {
-      // Fallback: copy to clipboard
       navigator.clipboard.writeText(text).catch(() => alert(text));
       return;
     }
     body.textContent = text;
     modal.hidden = false;
+    modal.style.display = 'flex';
   };
 
   /* ── Prepend row (used by auto-analyser) ─────────────────── */
