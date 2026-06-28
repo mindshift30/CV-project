@@ -6,6 +6,14 @@
   <meta name="description" content="Discover how AI and satellite imagery are used to monitor, protect, and restore Earth's forests." />
   <title>AI Fighting Deforestation</title>
   <link rel="stylesheet" href="style.css" />
+  <!-- ── Supabase JS client ──────────────────────────────────── -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script>
+    // ▶▶ PASTE YOUR SUPABASE CREDENTIALS HERE ◀◀
+    // Get them from: supabase.com → your project → Settings → API
+    window.SUPABASE_URL = 'https://YOUR_PROJECT_ID.supabase.co';
+    window.SUPABASE_KEY = 'YOUR_ANON_PUBLIC_KEY';
+  </script>
   <!-- TensorFlow.js core + COCO-SSD object detection model (loaded lazily) -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.17.0/dist/tf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
