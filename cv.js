@@ -26,6 +26,9 @@
     if (el) el.innerHTML = html;
   }
 
+  /* NDVI disclaimer injected alongside every NDVI result */
+  const NDVI_DISCLAIMER = '<br><small style="color:#57606a"><em>Note: True NDVI requires NIR band. This is an RGB proxy approximation only.</em></small>';
+
   /** Show/hide the canvas placeholder */
   function showPlaceholder (id, show) {
     const el = qs(id);
@@ -257,8 +260,12 @@
         const pA = dataA.data, pB = dataB.data;
 
         /* Threshold: a pixel is "changed" if its luminance diff > threshold */
-        const THRESH = 30;
+        const THRESH = 45;
         let lossCount = 0, gainCount = 0;
+
+        /* Pixel maps for centroid extraction */
+        const lossMap = new Uint8Array(cw * ch);
+        const gainMap = new Uint8Array(cw * ch);
 
         for (let i = 0; i < pA.length; i += 4) {
           const rA = pA[i], gA = pA[i+1], bA = pA[i+2];
@@ -268,22 +275,31 @@
           const lumA = 0.299*rA + 0.587*gA + 0.114*bA;
           const lumB = 0.299*rB + 0.587*gB + 0.114*bB;
           const diff = lumA - lumB; // positive = became darker (loss)
+          const px   = i >> 2;
 
           if (Math.abs(diff) > THRESH) {
             if (diff > 0) {
-              /* Darkened → forest loss → red overlay */
-              outData.data[i]   = 239;
-              outData.data[i+1] = 68;
-              outData.data[i+2] = 68;
-              outData.data[i+3] = Math.min(255, Math.round(Math.abs(diff) * 2));
-              lossCount++;
+              /* Darkened → forest loss → red overlay (only if was green in BEFORE) */
+              const wasGreen = gA > rA * 1.1 && gA > bA * 1.1;
+              if (wasGreen) {
+                outData.data[i]   = 239;
+                outData.data[i+1] = 68;
+                outData.data[i+2] = 68;
+                outData.data[i+3] = Math.min(255, Math.round(Math.abs(diff) * 2));
+                lossMap[px] = 1;
+                lossCount++;
+              }
             } else {
-              /* Brightened (green gain) → green overlay */
-              outData.data[i]   = 34;
-              outData.data[i+1] = 197;
-              outData.data[i+2] = 94;
-              outData.data[i+3] = Math.min(255, Math.round(Math.abs(diff) * 2));
-              gainCount++;
+              /* Brightened → green gain (only if pixel became green in AFTER) */
+              const isNowGreen = gB > rB * 1.1 && gB > bB * 1.1;
+              if (isNowGreen) {
+                outData.data[i]   = 34;
+                outData.data[i+1] = 197;
+                outData.data[i+2] = 94;
+                outData.data[i+3] = Math.min(255, Math.round(Math.abs(diff) * 2));
+                gainMap[px] = 1;
+                gainCount++;
+              }
             }
           }
         }
@@ -293,16 +309,49 @@
         showPlaceholder('change-placeholder', false);
         removeSpinner('change-canvas');
 
-        const total = cw * ch;
+        const total   = cw * ch;
         const lossPct = ((lossCount / total) * 100).toFixed(1);
         const gainPct = ((gainCount / total) * 100).toFixed(1);
+
+        /* ── GPS location extraction ───────────────────────────
+           Reads corner coordinates entered in the Upload section.
+           If not set, the location block is omitted. */
+        let locationHtml = '';
+        if (typeof pixelToGPS === 'function') {
+          const corners = _readUploadCorners();
+          if (corners && lossCount > 0) {
+            /* Find centroid of the loss region */
+            let sx = 0, sy = 0, cnt = 0;
+            for (let py = 0; py < ch; py++) {
+              for (let px = 0; px < cw; px++) {
+                if (lossMap[py * cw + px]) { sx += px; sy += py; cnt++; }
+              }
+            }
+            if (cnt > 0) {
+              const cx  = Math.round(sx / cnt);
+              const cy  = Math.round(sy / cnt);
+              const gps = pixelToGPS(cx, cy, cw, ch, corners);
+              const area = estimateAreaKm2(lossCount, cw, ch, corners);
+              const mapsUrl = generateGoogleMapsLink(gps.lat, gps.lng);
+              locationHtml =
+                `<br><div style="margin-top:8px;font-size:0.8rem">` +
+                  `<strong>Detected location:</strong> ` +
+                  coordDisplayHtml(gps.lat, gps.lng) +
+                  `<br><strong>Est. area lost:</strong> ${area.toFixed(4)} km²` +
+                  `<br><a href="${mapsUrl}" target="_blank" rel="noopener" style="color:#3b82d4">` +
+                    `Open in Google Maps ↗</a>` +
+                `</div>`;
+            }
+          }
+        }
 
         setStatus('change-status', 'Change map rendered.', 'done');
         setResults('change-results',
           `<span class="result-tag" style="background:#fee2e2;color:#991b1b">Loss ${lossPct}%</span>` +
           `<span class="result-tag" style="background:#dcfce7;color:#166534">Gain ${gainPct}%</span>` +
           `<br><small>Red = areas that darkened (potential forest loss). ` +
-          `Green = areas that brightened (potential regrowth).</small>`
+          `Green = areas that brightened (potential regrowth).</small>` +
+          locationHtml
         );
 
       } catch (err) {
@@ -377,7 +426,7 @@
           const total = r + g + b + 1;
           const rRatio = r / total;
           const bRatio = b / total;
-          const isHot  = rRatio > fireScore && bRatio < 0.22 && r > 80;
+          const isHot  = rRatio > fireScore && bRatio < 0.22 && r > 100 && r > g * 1.5;
 
           if (isHot) {
             /* False-colour: map intensity to yellow → orange → red */
@@ -549,7 +598,8 @@
           (mode === 'ndvi' ? 'NDVI false-colour: green = healthy canopy, brown = bare soil.' :
            mode === 'sobel' ? 'Sobel edges: yellow lines highlight canopy boundaries and structural transitions.' :
            'Combined: NDVI false-colour with Sobel edge overlay on canopy boundaries.') +
-          `</small>`
+          `</small>` +
+          NDVI_DISCLAIMER
         );
 
       } catch (err) {
@@ -562,9 +612,32 @@
     });
   }
 
+  /* ── _readUploadCorners ─────────────────────────────────────
+     Reads the GPS bounding-box corner fields from the Upload
+     section form (added in the location-tracking upgrade).
+     Returns a corners object suitable for pixelToGPS(), or
+     null if any required field is missing or location.js is
+     not loaded.
+  */
+  function _readUploadCorners () {
+    if (typeof pixelToGPS !== 'function') return null;
+    const g = (id) => { const el = document.getElementById(id); return el ? parseFloat(el.value) : NaN; };
+    const tllat = g('gps-tl-lat'), tllng = g('gps-tl-lng');
+    const trlat = g('gps-tr-lat'), trlng = g('gps-tr-lng');
+    const bllat = g('gps-bl-lat'), bllng = g('gps-bl-lng');
+    const brlat = g('gps-br-lat'), brlng = g('gps-br-lng');
+    if ([tllat,tllng,trlat,trlng,bllat,bllng,brlat,brlng].some(isNaN)) return null;
+    return {
+      topLeft:     { lat: tllat, lng: tllng },
+      topRight:    { lat: trlat, lng: trlng },
+      bottomLeft:  { lat: bllat, lng: bllng },
+      bottomRight: { lat: brlat, lng: brlng },
+    };
+  }
+
   /* ════════════════════════════════════════════════════════
      CV TAB SWITCHING
-  ════════════════════════════════════════════════════════ */
+   ════════════════════════════════════════════════════════ */
   const tabBtns   = document.querySelectorAll('.cv-tab');
   const tabPanels = document.querySelectorAll('.cv-panel');
 

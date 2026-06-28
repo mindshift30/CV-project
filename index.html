@@ -11,6 +11,74 @@
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
   <script defer src="script.js"></script>
   <script defer src="cv.js"></script>
+  <!-- Leaflet.js map (free, no API key) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Leaflet.heat heatmap plugin (optional) -->
+  <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+  <!-- exifr.js — EXIF GPS reader -->
+  <script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/lite.umd.js"></script>
+  <!-- Forest Monitor modules (load order matters) -->
+  <script defer src="js/db.js"></script>
+  <script defer src="js/location.js"></script>
+  <script defer src="js/upload.js"></script>
+  <script defer src="js/map.js"></script>
+  <script defer src="js/dashboard.js"></script>
+  <script defer src="js/auto-analyse.js"></script>
+  <style>
+    /* ── Dashboard & Monitor styles (scoped) ───────────────── */
+    #dashboard { background:#f7f8fa; padding: 60px 0; }
+    #dashboard .container { max-width: 1100px; margin: 0 auto; padding: 0 20px; }
+    .dash-header { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; }
+    .dash-header h2 { font-size:1.4rem; font-weight:700; margin:0; }
+    .dash-meta { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+    #monitor-last-checked { font-size:0.78rem; color:#57606a; }
+    .monitor-badge { font-size:0.72rem; font-weight:700; padding:2px 8px; border-radius:99px; letter-spacing:.04em; }
+    .badge-live { background:#dcfce7; color:#166534; border:1px solid #86efac; }
+    .badge-off  { background:#f3f4f6; color:#6b7280; border:1px solid #d1d5db; }
+    #monitor-toggle { padding:6px 14px; font-size:0.82rem; font-weight:600; border-radius:6px; border:1px solid #d1d5db; cursor:pointer; background:#fff; }
+    #monitor-toggle[data-on="1"] { background:#dcfce7; border-color:#86efac; color:#166534; }
+    .dash-table-wrap { overflow-x:auto; border:1px solid #e5e7eb; border-radius:8px; background:#fff; }
+    #dashboard-table { width:100%; border-collapse:collapse; font-size:0.85rem; }
+    #dashboard-table th { background:#f7f8fa; padding:10px 12px; text-align:left; font-weight:600; border-bottom:2px solid #e5e7eb; white-space:nowrap; }
+    #dashboard-table td { padding:8px 12px; border-bottom:1px solid #f0f0f0; vertical-align:middle; }
+    #dashboard-table tr:last-child td { border-bottom:none; }
+    #dashboard-empty { text-align:center; padding:40px 20px; color:#57606a; }
+    #monitor-log { margin-top:16px; max-height:160px; overflow-y:auto; background:#fff; border:1px solid #e5e7eb; border-radius:6px; padding:8px 10px; font-family:monospace; }
+
+    /* ── Upload section ────────────────────────────────────── */
+    #upload-section { padding:60px 0; }
+    #upload-section .container { max-width:680px; margin:0 auto; padding:0 20px; }
+    .upload-card { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:28px 32px; }
+    .upload-card h2 { font-size:1.25rem; font-weight:700; margin:0 0 6px; }
+    .upload-card p  { color:#57606a; font-size:0.9rem; margin:0 0 20px; }
+    .upload-row { display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; margin-bottom:14px; }
+    .upload-row label { font-size:0.82rem; font-weight:600; display:block; margin-bottom:4px; }
+    .upload-row input[type="text"] { padding:7px 10px; border:1px solid #d1d5db; border-radius:6px; font-size:0.85rem; width:180px; }
+    .upload-file-label { display:inline-flex; align-items:center; gap:8px; padding:8px 16px; border:1px dashed #3b82d4; border-radius:6px; cursor:pointer; font-size:0.85rem; color:#3b82d4; font-weight:600; }
+    .upload-file-label input { display:none; }
+    #sat-upload-btn { padding:8px 20px; background:#3b82d4; color:#fff; border:none; border-radius:6px; font-weight:600; cursor:pointer; font-size:0.85rem; }
+    #sat-upload-btn:disabled { opacity:0.45; cursor:not-allowed; }
+    #sat-preview-wrap { margin-bottom:12px; }
+    #sat-preview-img  { max-height:160px; border-radius:6px; border:1px solid #e5e7eb; display:block; }
+    #sat-progress-wrap { margin-bottom:10px; background:#e5e7eb; border-radius:99px; height:6px; }
+    #sat-progress-bar  { height:6px; border-radius:99px; background:#3b82d4; width:0%; transition:width .2s; }
+    .upload-status { font-size:0.82rem; margin-top:6px; color:#57606a; }
+    .upload-status.running { color:#2563eb; }
+    .upload-status.done    { color:#166534; }
+    .upload-status.error   { color:#ef4444; }
+
+    /* ── Alert bell & badge ────────────────────────────────── */
+    .alert-bell-wrap { position:relative; display:inline-flex; }
+    #alert-bell-btn  { background:none; border:none; cursor:pointer; padding:4px 6px; color:inherit; display:flex; align-items:center; }
+    #alert-count-badge { position:absolute; top:-4px; right:-4px; background:#ef4444; color:#fff; font-size:0.68rem; font-weight:700; min-width:18px; height:18px; border-radius:99px; display:flex; align-items:center; justify-content:center; padding:0 3px; }
+    .badge-flash { animation: flash-anim 0.4s 3; }
+    @keyframes flash-anim { 0%,100%{opacity:1} 50%{opacity:0.2} }
+    .alerts-dropdown { position:absolute; right:0; top:calc(100% + 6px); width:320px; background:#fff; border:1px solid #e5e7eb; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,.1); z-index:999; overflow:hidden; }
+    .alerts-dropdown ul { list-style:none; margin:0; padding:0; max-height:280px; overflow-y:auto; }
+    .alerts-dropdown-footer { display:flex; justify-content:flex-end; padding:6px 12px; border-top:1px solid #e5e7eb; }
+    #alerts-clear-btn { font-size:0.78rem; color:#3b82d4; background:none; border:none; cursor:pointer; }
+  </style>
 </head>
 <body>
 
@@ -30,10 +98,31 @@
   <ul class="nav-links" id="nav-links">
     <li><a href="#how-it-works">How It Works</a></li>
     <li><a href="#cv-demo">CV Demo</a></li>
+    <li><a href="#upload-section">Upload</a></li>
+    <li><a href="#dashboard">Dashboard</a></li>
     <li><a href="#comparison">Before &amp; After</a></li>
     <li><a href="#stats">Stats</a></li>
     <li><a href="#cta">Mission</a></li>
   </ul>
+
+  <!-- Alert bell -->
+  <div class="alert-bell-wrap" id="alert-bell-wrap">
+    <button id="alert-bell-btn" aria-label="Alerts" aria-haspopup="true" aria-expanded="false"
+            onclick="document.getElementById('alerts-dropdown').hidden=!document.getElementById('alerts-dropdown').hidden;this.setAttribute('aria-expanded',!document.getElementById('alerts-dropdown').hidden?'false':'true')">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+        <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+      </svg>
+      <span id="alert-count-badge" hidden>0</span>
+    </button>
+    <div class="alerts-dropdown" id="alerts-dropdown" hidden>
+      <ul id="alerts-list"></ul>
+      <div class="alerts-dropdown-footer">
+        <button id="alerts-clear-btn">Mark all read</button>
+      </div>
+    </div>
+  </div>
 
   <button class="nav-toggle" id="nav-toggle" aria-label="Toggle navigation" aria-expanded="false">
     <span></span><span></span><span></span>
@@ -443,6 +532,205 @@
 
   </div>
 </section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     UPLOAD SATELLITE IMAGE
+════════════════════════════════════════════════════════════ -->
+<section id="upload-section" aria-labelledby="upload-title">
+  <div class="container">
+    <div class="upload-card">
+      <h2 id="upload-title">Upload Satellite Image</h2>
+      <p>Add a new image to the monitoring queue. It will be auto-analysed within the next 30-second cycle.
+         GPS coordinates allow the system to pinpoint the exact location of any detected deforestation.</p>
+
+      <!-- Image preview -->
+      <div id="sat-preview-wrap" hidden>
+        <img id="sat-preview-img" src="" alt="Preview" style="max-height:180px;border-radius:6px;border:1px solid #e5e7eb;display:block;margin-bottom:10px" />
+      </div>
+
+      <!-- File + source row -->
+      <div class="upload-row">
+        <div>
+          <label for="sat-upload-input">Image / Video file</label>
+          <label class="upload-file-label">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+            Choose File
+            <input type="file" id="sat-upload-input" accept="image/jpeg,image/png,video/mp4" />
+          </label>
+        </div>
+        <div>
+          <label for="sat-upload-source">Source</label>
+          <input type="text" id="sat-upload-source" placeholder="e.g. Sentinel-2" maxlength="100" />
+        </div>
+        <button id="sat-upload-btn" disabled>Upload</button>
+      </div>
+
+      <!-- EXIF status -->
+      <div id="exif-status" style="font-size:0.8rem;margin-bottom:10px;color:#57606a" aria-live="polite"></div>
+
+      <!-- GPS Coordinates section -->
+      <details style="margin-bottom:14px;border:1px solid #e5e7eb;border-radius:6px;padding:10px 14px">
+        <summary style="font-size:0.85rem;font-weight:600;cursor:pointer;color:#1f2328">
+          GPS Coordinates (optional — enables exact location pinpointing)
+        </summary>
+        <div style="margin-top:12px">
+
+          <!-- Center / simple entry -->
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;align-items:flex-end">
+            <div>
+              <label style="font-size:0.78rem;font-weight:600;display:block;margin-bottom:3px">Center Latitude</label>
+              <input type="number" id="gps-center-lat" step="0.0000001" placeholder="e.g. -1.5250"
+                     style="width:140px;padding:5px 8px;border:1px solid #d1d5db;border-radius:5px;font-size:0.83rem" />
+            </div>
+            <div>
+              <label style="font-size:0.78rem;font-weight:600;display:block;margin-bottom:3px">Center Longitude</label>
+              <input type="number" id="gps-center-lng" step="0.0000001" placeholder="e.g. -48.4250"
+                     style="width:140px;padding:5px 8px;border:1px solid #d1d5db;border-radius:5px;font-size:0.83rem" />
+            </div>
+            <div>
+              <label style="font-size:0.78rem;font-weight:600;display:block;margin-bottom:3px">Zoom</label>
+              <input type="number" id="gps-zoom" value="12" min="1" max="22"
+                     style="width:70px;padding:5px 8px;border:1px solid #d1d5db;border-radius:5px;font-size:0.83rem" />
+            </div>
+          </div>
+
+          <!-- Four corners grid -->
+          <div style="font-size:0.78rem;font-weight:600;margin-bottom:6px;color:#57606a">
+            Bounding box corners (for pixel→GPS conversion):
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:4px">
+            <!-- Top-Left -->
+            <div style="background:#f7f8fa;border-radius:6px;padding:8px 10px">
+              <div style="font-size:0.75rem;font-weight:600;color:#57606a;margin-bottom:4px">Top-Left</div>
+              <input type="number" id="gps-tl-lat" step="0.0000001" placeholder="Lat"
+                     style="width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:0.8rem;margin-bottom:4px" />
+              <input type="number" id="gps-tl-lng" step="0.0000001" placeholder="Lng"
+                     style="width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:0.8rem" />
+            </div>
+            <!-- Top-Right -->
+            <div style="background:#f7f8fa;border-radius:6px;padding:8px 10px">
+              <div style="font-size:0.75rem;font-weight:600;color:#57606a;margin-bottom:4px">Top-Right</div>
+              <input type="number" id="gps-tr-lat" step="0.0000001" placeholder="Lat"
+                     style="width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:0.8rem;margin-bottom:4px" />
+              <input type="number" id="gps-tr-lng" step="0.0000001" placeholder="Lng"
+                     style="width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:0.8rem" />
+            </div>
+            <!-- Bottom-Left -->
+            <div style="background:#f7f8fa;border-radius:6px;padding:8px 10px">
+              <div style="font-size:0.75rem;font-weight:600;color:#57606a;margin-bottom:4px">Bottom-Left</div>
+              <input type="number" id="gps-bl-lat" step="0.0000001" placeholder="Lat"
+                     style="width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:0.8rem;margin-bottom:4px" />
+              <input type="number" id="gps-bl-lng" step="0.0000001" placeholder="Lng"
+                     style="width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:0.8rem" />
+            </div>
+            <!-- Bottom-Right -->
+            <div style="background:#f7f8fa;border-radius:6px;padding:8px 10px">
+              <div style="font-size:0.75rem;font-weight:600;color:#57606a;margin-bottom:4px">Bottom-Right</div>
+              <input type="number" id="gps-br-lat" step="0.0000001" placeholder="Lat"
+                     style="width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:0.8rem;margin-bottom:4px" />
+              <input type="number" id="gps-br-lng" step="0.0000001" placeholder="Lng"
+                     style="width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:0.8rem" />
+            </div>
+          </div>
+
+          <!-- Live coordinate preview -->
+          <div id="coord-preview" style="margin-top:10px"></div>
+        </div>
+      </details>
+
+      <!-- Progress bar -->
+      <div id="sat-progress-wrap" hidden>
+        <div id="sat-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
+      </div>
+      <div id="sat-upload-status" class="upload-status" aria-live="polite">Select a JPG, PNG, or MP4 file (max 50 MB).</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     DASHBOARD — Analysis History
+════════════════════════════════════════════════════════════ -->
+<section id="dashboard" aria-labelledby="dashboard-title">
+  <div class="container">
+
+    <div class="dash-header">
+      <h2 id="dashboard-title">Analysis Dashboard</h2>
+      <div class="dash-meta">
+        <span id="monitor-status-badge" class="monitor-badge badge-off">OFF</span>
+        <button id="monitor-toggle" data-on="0">Auto Monitor: OFF</button>
+        <span id="monitor-last-checked"></span>
+      </div>
+    </div>
+
+    <!-- Results table -->
+    <div class="dash-table-wrap">
+      <table id="dashboard-table" aria-label="Analysis history">
+        <thead>
+          <tr>
+            <th>Image</th>
+            <th>Name</th>
+            <th>Date Analysed</th>
+            <th>Loss %</th>
+            <th>Gain %</th>
+            <th>Fire %</th>
+            <th>NDVI</th>
+            <th>Coordinates</th>
+            <th>Area</th>
+            <th>Alert Level</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="dashboard-tbody"></tbody>
+      </table>
+      <p id="dashboard-empty">No analysis results yet. Upload an image and run Auto Monitor.</p>
+    </div>
+
+    <!-- Activity log -->
+    <div id="monitor-log" aria-live="polite" aria-label="Monitor activity log"></div>
+
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     LIVE MAP — Leaflet.js deforestation markers
+════════════════════════════════════════════════════════════ -->
+<section id="map-section" aria-labelledby="map-title" style="padding:60px 0;background:#fff">
+  <div class="container" style="max-width:1100px;margin:0 auto;padding:0 20px">
+    <h2 class="section-title" id="map-title" style="font-size:1.4rem;font-weight:700;margin-bottom:6px">
+      Live Deforestation Map
+    </h2>
+    <p style="color:#57606a;font-size:0.9rem;margin-bottom:16px">
+      Each marker represents a detected event. Red = deforestation/critical, Orange = fire, Yellow = warning, Green = safe.
+      Click any marker for details. Heatmap overlay shows detection density.
+    </p>
+    <div id="forest-map" style="height:480px;border-radius:10px;border:1px solid #e5e7eb;z-index:1"></div>
+    <!-- Legend injected by map.js -->
+  </div>
+</section>
+
+<!-- Report modal -->
+<div id="report-modal" hidden
+     style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;
+            display:flex;align-items:center;justify-content:center;padding:20px"
+     onclick="if(event.target===this)this.hidden=true">
+  <div style="background:#fff;border-radius:10px;padding:24px 28px;max-width:540px;width:100%;
+              max-height:80vh;overflow-y:auto;position:relative">
+    <button onclick="document.getElementById('report-modal').hidden=true"
+            style="position:absolute;top:10px;right:14px;background:none;border:none;
+                   font-size:1.3rem;cursor:pointer;color:#57606a" aria-label="Close">✕</button>
+    <h3 style="margin:0 0 12px;font-size:1rem">Detection Report</h3>
+    <pre id="report-modal-body"
+         style="font-size:0.8rem;line-height:1.7;white-space:pre-wrap;
+                background:#f7f8fa;border-radius:6px;padding:12px;border:1px solid #e5e7eb"></pre>
+    <button onclick="navigator.clipboard.writeText(document.getElementById('report-modal-body').textContent);this.textContent='Copied!';setTimeout(()=>this.textContent='Copy Report',1500)"
+            style="margin-top:10px;padding:6px 16px;background:#3b82d4;color:#fff;border:none;
+                   border-radius:6px;cursor:pointer;font-size:0.83rem">Copy Report</button>
+  </div>
+</div>
 
 <!-- ═══════════════════════════════════════════════════════════
      COMPARISON SLIDER
